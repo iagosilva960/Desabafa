@@ -98,27 +98,14 @@ Por favor, responda com empatia e apoio, oferecendo reflexões construtivas sobr
       throw new Error('Resposta vazia da API OpenAI');
     }
 
-    // Gerar sugestões simples baseadas no sentimento
-    const suggestions = generateSuggestions(sentiment);
-
-    return {
-      content: aiResponse.trim(),
-      sentiment: sentiment,
-      suggestions: suggestions,
-      timestamp: new Date().toISOString()
-    };
+    // Retornar apenas o conteúdo da resposta como string
+    return aiResponse.trim();
 
   } catch (error) {
     console.error('Erro ao gerar resposta da IA:', error);
     
     // Resposta de fallback em caso de erro
-    return {
-      content: `Olá! Obrigada por compartilhar seus sentimentos comigo. Embora eu não possa processar sua mensagem no momento devido a questões técnicas, quero que saiba que seus sentimentos são válidos e importantes. Lembre-se de que é normal ter altos e baixos, e você não está sozinho(a) nessa jornada. Continue escrevendo quando se sentir confortável - estarei aqui para apoiá-lo(a).`,
-      sentiment: 'neutro',
-      suggestions: ['Pratique respiração profunda', 'Faça uma caminhada ao ar livre', 'Converse com alguém de confiança'],
-      timestamp: new Date().toISOString(),
-      isOffline: true
-    };
+    return `Olá! Obrigada por compartilhar seus sentimentos comigo. Embora eu não possa processar sua mensagem no momento devido a questões técnicas, quero que saiba que seus sentimentos são válidos e importantes. Lembre-se de que é normal ter altos e baixos, e você não está sozinho(a) nessa jornada. Continue escrevendo quando se sentir confortável - estarei aqui para apoiá-lo(a).`;
   }
 };
 
