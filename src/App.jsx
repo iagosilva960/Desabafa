@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Button } from '@/components/ui/button.jsx'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card.jsx'
 import { Textarea } from '@/components/ui/textarea.jsx'
@@ -24,50 +24,60 @@ function App() {
   // Hook PWA
   const { isInstallable, isInstalled, installApp } = usePWA()
 
-  // Carregar dados do localStorage e verificar API
+  // Ref para controle direto do textarea
+  const textareaRef = useRef(null)
+
+  // Carregar dados do localStorage apenas uma vez
   useEffect(() => {
     const initializeApp = async () => {
-      // Carregar dados salvos
-      const savedUser = localStorage.getItem('desabafa-user')
-      const savedEntries = localStorage.getItem('desabafa-entries')
-      const savedTheme = localStorage.getItem('desabafa-theme')
-      
-      if (savedUser) {
-        setUserName(JSON.parse(savedUser).name)
-        setCurrentView('diary')
-      }
-      
-      if (savedEntries) {
-        setEntries(JSON.parse(savedEntries))
-      }
-      
-      if (savedTheme === 'dark') {
-        setDarkMode(true)
-        document.documentElement.classList.add('dark')
-      }
+      try {
+        // Carregar dados salvos
+        const savedUser = localStorage.getItem('desabafa-user')
+        const savedEntries = localStorage.getItem('desabafa-entries')
+        const savedTheme = localStorage.getItem('desabafa-theme')
+        
+        if (savedUser) {
+          const userData = JSON.parse(savedUser)
+          setUserName(userData.name)
+          setCurrentView('diary')
+        }
+        
+        if (savedEntries) {
+          setEntries(JSON.parse(savedEntries))
+        }
+        
+        if (savedTheme === 'dark') {
+          setDarkMode(true)
+          document.documentElement.classList.add('dark')
+        }
 
-      // Obter informações do dispositivo
-      const deviceData = getDeviceInfo()
-      setDeviceInfo(deviceData)
+        // Obter informações do dispositivo
+        const deviceData = getDeviceInfo()
+        setDeviceInfo(deviceData)
 
-      // Verificar disponibilidade da API
-      const status = await checkAPIAvailability()
-      setApiStatus({ ...status, checking: false })
+        // Verificar disponibilidade da API
+        const status = await checkAPIAvailability()
+        setApiStatus({ ...status, checking: false })
+      } catch (error) {
+        console.error('Erro na inicialização:', error)
+        setApiStatus({ available: false, checking: false })
+      }
     }
 
     initializeApp()
-  }, [])
+  }, []) // Dependência vazia para executar apenas uma vez
 
   const toggleTheme = () => {
-    setDarkMode(!darkMode)
+    const newDarkMode = !darkMode
+    setDarkMode(newDarkMode)
     document.documentElement.classList.toggle('dark')
-    localStorage.setItem('desabafa-theme', !darkMode ? 'dark' : 'light')
+    localStorage.setItem('desabafa-theme', newDarkMode ? 'dark' : 'light')
   }
 
   const handleUserRegister = () => {
     if (userName.trim()) {
       const userData = {
-        name: userName,
+        name: userName.trim(),
         id: Date.now().toString(),
         deviceId: getDeviceId(),
         createdAt: new Date().toISOString()
@@ -77,43 +87,58 @@ function App() {
     }
   }
 
+  const handleTextareaChange = (e) => {
+    const value = e.target.value
+    setCurrentEntry(value)
+  }
+
   const handleSaveEntry = async () => {
-    if (currentEntry.trim()) {
-      setIsProcessingAI(true)
-      
-      const newEntry = {
-        id: Date.now().toString(),
-        content: currentEntry,
-        mood: mood,
-        createdAt: new Date().toISOString(),
-        aiResponse: null,
-        deviceId: getDeviceId()
-      }
-      
+    const textareaValue = textareaRef.current?.value || ''
+    if (!textareaValue.trim()) return
+    
+    setIsProcessingAI(true)
+    
+    const newEntry = {
+      id: Date.now().toString(),
+      content: textareaValue.trim(),
+      mood: mood,
+      createdAt: new Date().toISOString(),
+      aiResponse: null,
+      deviceId: getDeviceId()
+    }
+    
+    try {
       // Salvar entrada imediatamente
       const updatedEntries = [newEntry, ...entries]
       setEntries(updatedEntries)
       localStorage.setItem('desabafa-entries', JSON.stringify(updatedEntries))
       
-      // Processar resposta da IA em background
-      try {
-        const userContext = { name: userName }
-        const aiResponse = await generateTherapistResponse(currentEntry, userContext)
-        
-        // Atualizar entrada com resposta da IA
-        newEntry.aiResponse = aiResponse
-        const entriesWithAI = [newEntry, ...entries]
-        setEntries(entriesWithAI)
-        localStorage.setItem('desabafa-entries', JSON.stringify(entriesWithAI))
-        
-      } catch (error) {
-        console.error('Erro ao processar IA:', error)
-      } finally {
-        setIsProcessingAI(false)
-      }
-      
+      // Limpar campos
       setCurrentEntry('')
       setMood(3)
+      if (textareaRef.current) {
+        textareaRef.current.value = ''
+      }
+      
+      // Processar resposta da IA em background
+      if (apiStatus.available) {
+        try {
+          const userContext = { name: userName }
+          const aiResponse = await generateTherapistResponse(textareaValue.trim(), userContext)
+          
+          // Atualizar entrada com resposta da IA
+          newEntry.aiResponse = aiResponse
+          const entriesWithAI = [newEntry, ...entries]
+          setEntries(entriesWithAI)
+          localStorage.setItem('desabafa-entries', JSON.stringify(entriesWithAI))
+        } catch (error) {
+          console.error('Erro ao processar IA:', error)
+        }
+      }
+    } catch (error) {
+      console.error('Erro ao salvar entrada:', error)
+    } finally {
+      setIsProcessingAI(false)
     }
   }
 
@@ -158,49 +183,34 @@ function App() {
           </div>
           <Button 
             onClick={handleUserRegister} 
-            className="w-full bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700"
+            className="w-full"
             disabled={!userName.trim()}
           >
+            <Heart className="w-4 h-4 mr-2" />
             Começar minha jornada
           </Button>
-          
-          {/* Status da API */}
-          <div className="text-xs text-center space-y-1">
-            <div className="flex items-center justify-center gap-2">
-              {apiStatus.checking ? (
-                <>
-                  <Loader2 className="w-3 h-3 animate-spin" />
-                  <span className="text-muted-foreground">Verificando IA terapeuta...</span>
-                </>
-              ) : apiStatus.available ? (
-                <>
-                  <Bot className="w-3 h-3 text-green-500" />
-                  <span className="text-green-600 dark:text-green-400">IA terapeuta disponível</span>
-                </>
-              ) : (
-                <>
-                  <Bot className="w-3 h-3 text-orange-500" />
-                  <span className="text-orange-600 dark:text-orange-400">IA em modo offline</span>
-                </>
-              )}
-            </div>
-            <p className="text-muted-foreground">
-              Seus dados ficam seguros no seu dispositivo. Nada é enviado para servidores externos.
-            </p>
-            {deviceInfo && (
-              <p className="text-muted-foreground">
-                ID do dispositivo: {deviceInfo.id.slice(0, 8)}...
-              </p>
-            )}
+          <div className="text-center">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={toggleTheme}
+            >
+              {darkMode ? <Sun className="w-4 h-4 mr-2" /> : <Moon className="w-4 h-4 mr-2" />}
+              {darkMode ? 'Modo Claro' : 'Modo Escuro'}
+            </Button>
           </div>
         </CardContent>
       </Card>
     </div>
   )
 
-  const DiaryScreen = () => (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-gray-900 dark:to-gray-800">
-      <header className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm border-b sticky top-0 z-10">
+  if (currentView === 'welcome') {
+    return <WelcomeScreen />
+  }
+
+  return (
+    <div className={`min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-gray-900 dark:to-gray-800 transition-colors duration-300 ${darkMode ? 'dark' : ''}`}>
+      <header className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm border-b border-gray-200 dark:border-gray-700 sticky top-0 z-10">
         <div className="max-w-4xl mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-gradient-to-r from-blue-500 to-indigo-600 rounded-full flex items-center justify-center">
@@ -226,10 +236,19 @@ function App() {
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => setCurrentView('history')}
+              onClick={() => setCurrentView(currentView === 'diary' ? 'history' : 'diary')}
             >
-              <Calendar className="w-4 h-4 mr-2" />
-              Histórico
+              {currentView === 'diary' ? (
+                <>
+                  <Calendar className="w-4 h-4 mr-2" />
+                  Histórico
+                </>
+              ) : (
+                <>
+                  <PenTool className="w-4 h-4 mr-2" />
+                  Escrever
+                </>
+              )}
             </Button>
             <Button
               variant="ghost"
@@ -243,217 +262,112 @@ function App() {
       </header>
 
       <main className="max-w-4xl mx-auto px-4 py-8">
-        <Card className="mb-8">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <PenTool className="w-5 h-5" />
-              Como foi seu dia hoje?
-            </CardTitle>
-            <CardDescription className="flex items-center gap-2">
-              Escreva sobre seus sentimentos, pensamentos e experiências. Nossa IA terapeuta está aqui para te apoiar.
-              {apiStatus.available ? (
-                <Badge variant="secondary" className="ml-2">
-                  <Bot className="w-3 h-3 mr-1" />
-                  IA ativa
-                </Badge>
-              ) : (
-                <Badge variant="outline" className="ml-2">
-                  <Bot className="w-3 h-3 mr-1" />
-                  IA offline
-                </Badge>
-              )}
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <Textarea
-              placeholder="Desabafe aqui... Conte como você está se sentindo, o que aconteceu hoje, suas preocupações ou alegrias. Não há julgamentos, apenas apoio."
-              value={currentEntry}
-              onChange={(e) => setCurrentEntry(e.target.value)}
-              className="min-h-32 resize-none"
-              disabled={isProcessingAI}
-            />
-            
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Smile className="w-4 h-4 text-muted-foreground" />
-                <span className="text-sm text-muted-foreground">Como você se sente?</span>
-                <div className="flex gap-1">
-                  {[1, 2, 3, 4, 5].map((level) => (
-                    <button
-                      key={level}
-                      onClick={() => setMood(level)}
-                      disabled={isProcessingAI}
-                      className={`text-lg hover:scale-110 transition-transform ${
-                        mood === level ? 'scale-110' : 'opacity-50'
-                      } ${isProcessingAI ? 'cursor-not-allowed' : 'cursor-pointer'}`}
-                    >
-                      {getMoodEmoji(level)}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              
-              <Button 
-                onClick={handleSaveEntry}
-                disabled={!currentEntry.trim() || isProcessingAI}
-                className="bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700"
-              >
-                {isProcessingAI ? (
-                  <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    Processando...
-                  </>
+        {currentView === 'diary' && (
+          <Card className="mb-8">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <PenTool className="w-5 h-5" />
+                Como foi seu dia hoje?
+              </CardTitle>
+              <CardDescription className="flex items-center gap-2">
+                Escreva sobre seus sentimentos, pensamentos e experiências. Nossa IA terapeuta está aqui para te apoiar.
+                {apiStatus.available ? (
+                  <Badge variant="secondary" className="ml-2">
+                    <Bot className="w-3 h-3 mr-1" />
+                    IA ativa
+                  </Badge>
                 ) : (
-                  <>
-                    <Plus className="w-4 h-4 mr-2" />
-                    Salvar entrada
-                  </>
+                  <Badge variant="outline" className="ml-2">
+                    <Bot className="w-3 h-3 mr-1" />
+                    IA offline
+                  </Badge>
                 )}
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <textarea
+                ref={textareaRef}
+                placeholder="Desabafe aqui... Conte como você está se sentindo, o que aconteceu hoje, suas preocupações ou alegrias. Não há julgamentos, apenas apoio."
+                className="w-full min-h-32 p-3 border border-gray-300 rounded-md resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={isProcessingAI}
+              />
+              
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Smile className="w-4 h-4 text-muted-foreground" />
+                  <span className="text-sm text-muted-foreground">Como você se sente?</span>
+                  <div className="flex gap-1">
+                    {[1, 2, 3, 4, 5].map((value) => (
+                      <Button
+                        key={value}
+                        variant={mood === value ? "default" : "outline"}
+                        size="sm"
+                        onClick={() => setMood(value)}
+                        disabled={isProcessingAI}
+                      >
+                        {getMoodEmoji(value)}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+                <Button 
+                  onClick={handleSaveEntry}
+                  disabled={isProcessingAI}
+                  className="min-w-32"
+                >
+                  {isProcessingAI ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Processando...
+                    </>
+                  ) : (
+                    <>
+                      <Plus className="w-4 h-4 mr-2" />
+                      Salvar entrada
+                    </>
+                  )}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {entries.length > 0 && (
           <Card>
             <CardHeader>
-              <CardTitle>Suas últimas reflexões</CardTitle>
+              <CardTitle className="flex items-center gap-2">
+                <MessageCircle className="w-5 h-5" />
+                Suas últimas reflexões
+              </CardTitle>
             </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                {entries.slice(0, 3).map((entry) => (
-                  <div key={entry.id} className="border-l-4 border-blue-500 pl-4 py-2">
-                    <div className="flex items-center justify-between mb-2">
-                      <Badge variant="outline" className="text-xs">
-                        {formatDate(entry.createdAt)}
-                      </Badge>
-                      <span className="text-lg">{getMoodEmoji(entry.mood)}</span>
-                    </div>
-                    <p className="text-sm text-muted-foreground line-clamp-2 mb-2">
-                      {entry.content}
-                    </p>
-                    {entry.aiResponse && (
-                      <div className="mt-2 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border-l-4 border-blue-500">
-                        <div className="flex items-center gap-2 mb-1">
-                          <Bot className="w-3 h-3 text-blue-500" />
-                          <span className="text-xs font-medium text-blue-700 dark:text-blue-300">
-                            IA Terapeuta
-                          </span>
-                        </div>
-                        <p className="text-xs text-blue-800 dark:text-blue-200 line-clamp-3">
-                          {entry.aiResponse.content}
-                        </p>
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        )}
-      </main>
-    </div>
-  )
-
-  const HistoryScreen = () => (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-gray-900 dark:to-gray-800">
-      <header className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm border-b sticky top-0 z-10">
-        <div className="max-w-4xl mx-auto px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setCurrentView('diary')}
-            >
-              ← Voltar
-            </Button>
-            <h1 className="font-bold text-lg">Histórico de Entradas</h1>
-          </div>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={toggleTheme}
-          >
-            {darkMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-          </Button>
-        </div>
-      </header>
-
-      <main className="max-w-4xl mx-auto px-4 py-8">
-        {entries.length === 0 ? (
-          <Card>
-            <CardContent className="text-center py-12">
-              <MessageCircle className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
-              <h3 className="text-lg font-semibold mb-2">Nenhuma entrada ainda</h3>
-              <p className="text-muted-foreground mb-4">
-                Comece escrevendo sobre seu dia para ver suas reflexões aqui.
-              </p>
-              <Button onClick={() => setCurrentView('diary')}>
-                Escrever primeira entrada
-              </Button>
-            </CardContent>
-          </Card>
-        ) : (
-          <div className="space-y-6">
-            {entries.map((entry) => (
-              <Card key={entry.id}>
-                <CardHeader>
-                  <div className="flex items-center justify-between">
-                    <Badge variant="outline">
+            <CardContent className="space-y-4">
+              {entries.slice(0, currentView === 'history' ? entries.length : 3).map((entry) => (
+                <div key={entry.id} className="border-l-4 border-blue-500 pl-4 py-2">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm text-muted-foreground">
                       {formatDate(entry.createdAt)}
-                    </Badge>
-                    <span className="text-2xl">{getMoodEmoji(entry.mood)}</span>
+                    </span>
+                    <span className="text-lg">{getMoodEmoji(entry.mood)}</span>
                   </div>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-sm leading-relaxed whitespace-pre-wrap mb-4">
-                    {entry.content}
-                  </p>
+                  <p className="text-sm mb-3 text-muted-foreground">{entry.content}</p>
+                  
                   {entry.aiResponse && (
-                    <div className="mt-4 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg border-l-4 border-blue-500">
+                    <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-3 mt-2">
                       <div className="flex items-center gap-2 mb-2">
-                        <Bot className="w-4 h-4 text-blue-500" />
-                        <span className="text-sm font-medium text-blue-700 dark:text-blue-300">
-                          Resposta da IA Terapeuta
-                        </span>
-                        {entry.aiResponse.isOffline && (
-                          <Badge variant="outline" className="text-xs">
-                            Modo offline
-                          </Badge>
-                        )}
+                        <Bot className="w-4 h-4 text-blue-600" />
+                        <span className="text-sm font-medium text-blue-600">IA Terapeuta</span>
                       </div>
-                      <p className="text-sm text-blue-800 dark:text-blue-200 mb-3">
-                        {entry.aiResponse.content}
-                      </p>
-                      {entry.aiResponse.suggestions && entry.aiResponse.suggestions.length > 0 && (
-                        <div className="space-y-1">
-                          <p className="text-xs font-medium text-blue-700 dark:text-blue-300">
-                            Sugestões:
-                          </p>
-                          <ul className="text-xs text-blue-800 dark:text-blue-200 space-y-1">
-                            {entry.aiResponse.suggestions.map((suggestion, index) => (
-                              <li key={index} className="flex items-start gap-1">
-                                <span>•</span>
-                                <span>{suggestion}</span>
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-                      )}
+                      <p className="text-sm text-blue-800 dark:text-blue-200">{entry.aiResponse}</p>
                     </div>
                   )}
-                </CardContent>
-              </Card>
-            ))}
-          </div>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
         )}
       </main>
     </div>
   )
-
-  if (currentView === 'welcome') return <WelcomeScreen />
-  if (currentView === 'history') return <HistoryScreen />
-  return <DiaryScreen />
 }
 
 export default App

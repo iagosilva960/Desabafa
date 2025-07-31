@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Teste Textarea</title>
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        textarea { width: 100%; min-height: 100px; padding: 10px; border: 1px solid #ccc; border-radius: 4px; }
+        .debug { background: #f0f0f0; padding: 10px; margin: 10px 0; border-radius: 4px; }
+    </style>
+</head>
+<body>
+    <h1>Teste de Textarea - Debugging</h1>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect } = React;
+
+        function TestApp() {
+            const [text, setText] = useState('');
+            const [debugInfo, setDebugInfo] = useState([]);
+
+            const handleChange = (e) => {
+                const newValue = e.target.value;
+                console.log('onChange chamado:', newValue);
+                setDebugInfo(prev => [...prev, `onChange: "${newValue}" (length: ${newValue.length})`]);
+                setText(newValue);
+            };
+
+            useEffect(() => {
+                console.log('Estado text atualizado:', text);
+                setDebugInfo(prev => [...prev, `Estado atualizado: "${text}"`]);
+            }, [text]);
+
+            return (
+                <div>
+                    <h2>Teste Simples</h2>
+                    <textarea
+                        value={text}
+                        onChange={handleChange}
+                        placeholder="Digite aqui para testar..."
+                    />
+                    
+                    <div className="debug">
+                        <h3>Estado atual: "{text}"</h3>
+                        <h3>Comprimento: {text.length}</h3>
+                    </div>
+
+                    <div className="debug">
+                        <h3>Debug Log:</h3>
+                        {debugInfo.slice(-10).map((info, index) => (
+                            <div key={index}>{info}</div>
+                        ))}
+                    </div>
+
+                    <button onClick={() => setText('')}>Limpar</button>
+                    <button onClick={() => setText('Teste predefinido')}>Definir Teste</button>
+                </div>
+            );
+        }
+
+        ReactDOM.render(<TestApp />, document.getElementById('root'));
+    </script>
+</body>
+</html>
+
